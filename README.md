@@ -19,9 +19,9 @@ User-friendly navigation
 
 ## 🚀 Getting Started
 1. Clone the repository
-   git clone https://github.com/yourusername/your-repo-name.git
+   git clone https://github.com/Sakshi24-parashar/Dashboard_creation.git
 2. Open the project
-   cd your-repo-name
+   cd Dashboard_creation
 3. Run the project
 Simply open index.html in your browser.
 
