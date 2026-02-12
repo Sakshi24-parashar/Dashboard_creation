@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sakshi</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+</head>
+
+<body>
+
+<div class="chat-box">
+  <div class="header">Chat</div>
+
+  <div class="chat-messages" id="chatMessages">
+
+    <div class="msg left">
+      <div class="bubble">
+        <div class="time">Mike</div>
+        Hi Bryan, I am here to turn your raw data into useful insights 🙂
+      </div>
+    </div>
+
+    <div class="msg right">
+      <div class="bubble">
+        <div class="time">You</div>
+        Thank you, I am providing you the dataset ✨
+      </div>
+    </div>
+
+    <div class="msg left">
+      <div class="bubble">
+        <div class="time">Mike</div>
+        Alright 🙂
+      </div>
+    </div>
+
+  </div>
+
+  <div class="input">
+    <label class="plus" for="excelInput">+</label>
+    <input type="file" id="excelInput" accept=".xls,.xlsx,.csv" hidden>
+
+    <input id="messageInput" placeholder="Add a message..." />
+
+    <button id="sendBtn">Send</button>
+  </div>
+</div>
+
+<script>
+/* Animate initial messages */
+document.querySelectorAll(".msg").forEach((m,i)=>{
+  setTimeout(()=>m.classList.add("show"),600+i*1200);
+});
+
+const fileInput = document.getElementById("excelInput");
+const messageInput = document.getElementById("messageInput");
+const sendBtn = document.getElementById("sendBtn");
+const chat = document.getElementById("chatMessages");
+
+let attachedFile=null;
+
+/* Attach file */
+fileInput.addEventListener("change",()=>{
+  attachedFile=fileInput.files[0];
+  if(attachedFile) messageInput.value="📎 "+attachedFile.name;
+});
+
+/* Send */
+sendBtn.addEventListener("click",sendMessage);
+messageInput.addEventListener("keydown",e=>{
+  if(e.key==="Enter") sendMessage();
+});
+
+function sendMessage(){
+  if(!attachedFile && !messageInput.value.trim()) return;
+
+  addMsg("You",attachedFile?"📎 "+attachedFile.name:messageInput.value,true);
+
+  if(attachedFile) readExcel(attachedFile);
+
+  messageInput.value="";
+  fileInput.value="";
+  attachedFile=null;
+}
+
+/* Chat helper */
+function addMsg(user,text,right=false){
+  const m=document.createElement("div");
+  m.className=`msg ${right?"right":"left"} show`;
+  m.innerHTML=`
+    <div class="bubble">
+      <div class="time">${user}</div>
+      ${text}
+    </div>`;
+  chat.appendChild(m);
+  chat.scrollTop=chat.scrollHeight;
+}
+
+/* Excel + CSV reader */
+function readExcel(file){
+  const r=new FileReader();
+  r.onload=e=>{
+    const wb=XLSX.read(new Uint8Array(e.target.result),{type:"array"});
+    const sheet=wb.Sheets[wb.SheetNames[0]];
+    const data=XLSX.utils.sheet_to_json(sheet);
+    buildDashboard(data);
+  };
+  r.readAsArrayBuffer(file);
+}
+
+/* ==========================
+   UNIFIED BI DASHBOARD
+========================== */
+function buildDashboard(data){
+  if(!data.length) return;
+
+  const cols = Object.keys(data[0]);
+  const numCols = cols.filter(c=>data.some(r=>!isNaN(Number(r[c]))));
+
+  const cat = cols[0];
+  const sales = numCols[0];
+  const profit = numCols[1] || numCols[0];
+
+  const totalSales = sum(data,sales);
+  const totalProfit = sum(data,profit);
+
+  addMsg("Mike","Here’s your complete performance dashboard 📊");
+
+  const id = Date.now();
+
+  const dash=document.createElement("div");
+  dash.className="msg left show";
+  dash.innerHTML=`
+  <div class="bubble" style="width:95%">
+
+    <div class="kpi-grid">
+      <div class="kpi">Sales<br><b>${(totalSales/1000).toFixed(1)}K</b></div>
+      <div class="kpi">Profit<br><b>${(totalProfit/1000).toFixed(1)}K</b></div>
+      <div class="kpi">Records<br><b>${data.length}</b></div>
+      <div class="kpi">Avg Value<br><b>${(totalSales/data.length).toFixed(1)}</b></div>
+    </div>
+
+    <div class="grid-2">
+      <canvas id="trend${id}"></canvas>
+      <canvas id="pie${id}"></canvas>
+    </div>
+
+    <div class="grid-2">
+      <canvas id="bar${id}"></canvas>
+      <canvas id="profit${id}"></canvas>
+    </div>
+
+  </div>`;
+
+  chat.appendChild(dash);
+
+  /* Trend */
+  chart(`trend${id}`,"line",
+    data.map((_,i)=>i+1),
+    data.map(r=>+r[sales]||0),
+    sales+" Trend"
+  );
+
+  /* Category aggregation */
+  const agg={};
+  data.forEach(r=>{
+    agg[r[cat]]=(agg[r[cat]]||0)+(+r[sales]||0);
+  });
+
+  const sorted=Object.entries(agg).sort((a,b)=>b[1]-a[1]).slice(0,6);
+
+  chart(`pie${id}`,"pie",
+    sorted.map(x=>x[0]),
+    sorted.map(x=>x[1]),
+    "Sales Share"
+  );
+
+  chart(`bar${id}`,"bar",
+    sorted.map(x=>x[0]),
+    sorted.map(x=>x[1]),
+    "Top Categories"
+  );
+
+  chart(`profit${id}`,"bar",
+    data.slice(0,10).map((_,i)=>i+1),
+    data.slice(0,10).map(r=>+r[profit]||0),
+    profit+" Sample"
+  );
+
+  chat.scrollTop=chat.scrollHeight;
+}
+
+/* Helpers */
+function sum(arr,col){
+  return arr.reduce((a,b)=>a+(+b[col]||0),0);
+}
+
+function chart(id,type,labels,data,label){
+  new Chart(document.getElementById(id),{
+    type,
+    data:{
+      labels,
+      datasets:[{label,data,borderWidth:2,fill:false}]
+    },
+    options:{
+      responsive:true,
+      plugins:{legend:{display:true}},
+      scales:type==="pie"?{}:{y:{beginAtZero:true}}
+    }
+  });
+}
+</script>
+
+
+
+
+</body>
+</html>
