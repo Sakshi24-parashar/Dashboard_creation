@@ -18,6 +18,7 @@ body.light{
 }
 
 .chat-box{
+  height:300px;
  width:100vw;
  max-width:1200px;
  min-height:100vh;
@@ -69,11 +70,12 @@ body.light .kpi{
 }
 
 .grid-2{
- display:grid;
- grid-template-columns:1fr 1fr;
- gap:14px;
- margin-top:14px;
+ display:flex;
+ flex-direction:column;
+ gap:18px;
+ margin-top:18px;
 }
+
 
 canvas{
  background:#111;
