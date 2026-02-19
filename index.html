@@ -1,222 +1,206 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Sakshi</title>
-  <link rel="stylesheet" href="style.css">
-  <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sakshi BI Dashboard</title>
 
+<link rel="stylesheet" href="style.css">
+
+<script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
 
 <body>
 
-<div class="chat-box">
-  <div class="header">Chat</div>
+<div class="chat-box" id="dashboard">
 
-  <div class="chat-messages" id="chatMessages">
+<div class="top-controls">
+  <input type="file" id="excelInput" accept=".xls,.xlsx,.csv">
 
-    <div class="msg left">
-      <div class="bubble">
-        <div class="time">Mike</div>
-        Hi Bryan, I am here to turn your raw data into useful insights 🙂
-      </div>
-    </div>
+  <select id="metricSelect"></select>
+  <select id="categoryFilter"></select>
 
-    <div class="msg right">
-      <div class="bubble">
-        <div class="time">You</div>
-        Thank you, I am providing you the dataset ✨
-      </div>
-    </div>
+  <input type="date" id="startDate">
+  <input type="date" id="endDate">
 
-    <div class="msg left">
-      <div class="bubble">
-        <div class="time">Mike</div>
-        Alright 🙂
-      </div>
-    </div>
+  <button onclick="switchChart()">Switch Chart</button>
+  <button onclick="exportPDF()">Export PDF</button>
+  <button onclick="toggleTheme()">🌗</button>
+</div>
 
-  </div>
+<div class="summary" id="summary"></div>
 
-  <div class="input">
-    <label class="plus" for="excelInput">+</label>
-    <input type="file" id="excelInput" accept=".xls,.xlsx,.csv" hidden>
+<div class="kpi-grid" id="kpis"></div>
 
-    <input id="messageInput" placeholder="Add a message..." />
+<div class="grid-2">
+  <canvas id="trend"></canvas>
+  <canvas id="pie"></canvas>
+</div>
 
-    <button id="sendBtn">Send</button>
-  </div>
+<div class="grid-2">
+  <canvas id="bar"></canvas>
+  <canvas id="metricChart"></canvas>
+</div>
+
 </div>
 
 <script>
-/* Animate initial messages */
-document.querySelectorAll(".msg").forEach((m,i)=>{
-  setTimeout(()=>m.classList.add("show"),600+i*1200);
+let rawData=[],dateCol,catCol,numericCols=[];
+let chartType="bar";
+let charts={};
+
+excelInput.addEventListener("change",e=>{
+ const file=e.target.files[0];
+ const r=new FileReader();
+ r.onload=x=>{
+  const wb=XLSX.read(new Uint8Array(x.target.result),{type:"array"});
+  const sheet=wb.Sheets[wb.SheetNames[0]];
+  rawData=XLSX.utils.sheet_to_json(sheet);
+  smartDetect();
+ };
+ r.readAsArrayBuffer(file);
 });
 
-const fileInput = document.getElementById("excelInput");
-const messageInput = document.getElementById("messageInput");
-const sendBtn = document.getElementById("sendBtn");
-const chat = document.getElementById("chatMessages");
+function smartDetect(){
+ const cols=Object.keys(rawData[0]);
 
-let attachedFile=null;
+ dateCol=cols.find(c=>rawData.some(r=>!isNaN(Date.parse(r[c]))));
+ catCol=cols.find(c=>typeof rawData[0][c]==="string");
+ numericCols=cols.filter(c=>rawData.some(r=>!isNaN(parseFloat(r[c]))));
 
-/* Attach file */
-fileInput.addEventListener("change",()=>{
-  attachedFile=fileInput.files[0];
-  if(attachedFile) messageInput.value="📎 "+attachedFile.name;
-});
-
-/* Send */
-sendBtn.addEventListener("click",sendMessage);
-messageInput.addEventListener("keydown",e=>{
-  if(e.key==="Enter") sendMessage();
-});
-
-function sendMessage(){
-  if(!attachedFile && !messageInput.value.trim()) return;
-
-  addMsg("You",attachedFile?"📎 "+attachedFile.name:messageInput.value,true);
-
-  if(attachedFile) readExcel(attachedFile);
-
-  messageInput.value="";
-  fileInput.value="";
-  attachedFile=null;
+ buildControls();
+ render();
 }
 
-/* Chat helper */
-function addMsg(user,text,right=false){
-  const m=document.createElement("div");
-  m.className=`msg ${right?"right":"left"} show`;
-  m.innerHTML=`
-    <div class="bubble">
-      <div class="time">${user}</div>
-      ${text}
-    </div>`;
-  chat.appendChild(m);
-  chat.scrollTop=chat.scrollHeight;
+function buildControls(){
+ metricSelect.innerHTML=numericCols.map(c=>`<option>${c}</option>`).join("");
+
+ const cats=[...new Set(rawData.map(r=>r[catCol]))];
+ categoryFilter.innerHTML=`<option value="">All</option>`+
+ cats.map(c=>`<option>${c}</option>`).join("");
+
+ metricSelect.onchange=render;
+ categoryFilter.onchange=render;
+ startDate.onchange=render;
+ endDate.onchange=render;
 }
 
-/* Excel + CSV reader */
-function readExcel(file){
-  const r=new FileReader();
-  r.onload=e=>{
-    const wb=XLSX.read(new Uint8Array(e.target.result),{type:"array"});
-    const sheet=wb.Sheets[wb.SheetNames[0]];
-    const data=XLSX.utils.sheet_to_json(sheet);
-    buildDashboard(data);
-  };
-  r.readAsArrayBuffer(file);
+function filterData(){
+ let d=[...rawData];
+
+ if(categoryFilter.value)
+   d=d.filter(r=>r[catCol]==categoryFilter.value);
+
+ if(dateCol){
+  if(startDate.value)
+    d=d.filter(r=>new Date(r[dateCol])>=new Date(startDate.value));
+  if(endDate.value)
+    d=d.filter(r=>new Date(r[dateCol])<=new Date(endDate.value));
+ }
+
+ return d;
 }
 
-/* ==========================
-   UNIFIED BI DASHBOARD
-========================== */
-function buildDashboard(data){
-  if(!data.length) return;
+function render(){
+ const data=filterData();
+ if(!data.length) return;
 
-  const cols = Object.keys(data[0]);
-  const numCols = cols.filter(c=>data.some(r=>!isNaN(Number(r[c]))));
+ const metric=metricSelect.value;
 
-  const cat = cols[0];
-  const sales = numCols[0];
-  const profit = numCols[1] || numCols[0];
+ const total=data.reduce((a,b)=>a+(+b[metric]||0),0);
+ const avg=(total/data.length).toFixed(1);
 
-  const totalSales = sum(data,sales);
-  const totalProfit = sum(data,profit);
+ kpis.innerHTML=`
+ <div class="kpi">Total<br><b>${total.toFixed(1)}</b></div>
+ <div class="kpi">Average<br><b>${avg}</b></div>
+ <div class="kpi">Records<br><b>${data.length}</b></div>
+ <div class="kpi">Max<br><b>${Math.max(...data.map(r=>+r[metric]||0))}</b></div>
+ `;
 
-  addMsg("Mike","Here’s your complete performance dashboard 📊");
+ const agg={};
+ data.forEach(r=>agg[r[catCol]]=(agg[r[catCol]]||0)+(+r[metric]||0));
 
-  const id = Date.now();
+ /* ===== TOP 10 + OTHERS ===== */
+ const sorted = Object.entries(agg).sort((a,b)=>b[1]-a[1]);
+ const top10 = sorted.slice(0,10);
+ const others = sorted.slice(10);
 
-  const dash=document.createElement("div");
-  dash.className="msg left show";
-  dash.innerHTML=`
-  <div class="bubble" style="width:95%">
+ let labels = top10.map(x=>x[0]);
+ let values = top10.map(x=>x[1]);
 
-    <div class="kpi-grid">
-      <div class="kpi">Sales<br><b>${(totalSales/1000).toFixed(1)}K</b></div>
-      <div class="kpi">Profit<br><b>${(totalProfit/1000).toFixed(1)}K</b></div>
-      <div class="kpi">Records<br><b>${data.length}</b></div>
-      <div class="kpi">Avg Value<br><b>${(totalSales/data.length).toFixed(1)}</b></div>
-    </div>
+ if(others.length){
+  const othersSum = others.reduce((a,b)=>a+b[1],0);
+  labels.push("Others");
+  values.push(othersSum);
+ }
 
-    <div class="grid-2">
-      <canvas id="trend${id}"></canvas>
-      <canvas id="pie${id}"></canvas>
-    </div>
+ draw("pie","pie",labels,values);
+ draw("bar","bar",labels,values);
 
-    <div class="grid-2">
-      <canvas id="bar${id}"></canvas>
-      <canvas id="profit${id}"></canvas>
-    </div>
+ draw("metricChart",chartType,
+   data.map((_,i)=>i+1),
+   data.map(r=>+r[metric]||0)
+ );
 
-  </div>`;
-
-  chat.appendChild(dash);
-
-  /* Trend */
-  chart(`trend${id}`,"line",
-    data.map((_,i)=>i+1),
-    data.map(r=>+r[sales]||0),
-    sales+" Trend"
+ if(dateCol){
+  const sortedDates=[...data].sort((a,b)=>new Date(a[dateCol])-new Date(b[dateCol]));
+  draw("trend","line",
+    sortedDates.map(r=>r[dateCol]),
+    sortedDates.map(r=>+r[metric]||0)
   );
+ }
 
-  /* Category aggregation */
-  const agg={};
-  data.forEach(r=>{
-    agg[r[cat]]=(agg[r[cat]]||0)+(+r[sales]||0);
-  });
-
-  const sorted=Object.entries(agg).sort((a,b)=>b[1]-a[1]).slice(0,6);
-
-  chart(`pie${id}`,"pie",
-    sorted.map(x=>x[0]),
-    sorted.map(x=>x[1]),
-    "Sales Share"
-  );
-
-  chart(`bar${id}`,"bar",
-    sorted.map(x=>x[0]),
-    sorted.map(x=>x[1]),
-    "Top Categories"
-  );
-
-  chart(`profit${id}`,"bar",
-    data.slice(0,10).map((_,i)=>i+1),
-    data.slice(0,10).map(r=>+r[profit]||0),
-    profit+" Sample"
-  );
-
-  chat.scrollTop=chat.scrollHeight;
+ generateInsights(labels,values,total);
 }
 
-/* Helpers */
-function sum(arr,col){
-  return arr.reduce((a,b)=>a+(+b[col]||0),0);
+function draw(id,type,labels,data){
+ if(charts[id]) charts[id].destroy();
+
+ charts[id]=new Chart(document.getElementById(id),{
+  type,
+  data:{labels,datasets:[{label:id,data,borderWidth:2}]},
+  options:{
+   responsive:true,
+   maintainAspectRatio:false,
+   scales:type==="pie"?{}:{y:{beginAtZero:true}}
+  }
+ });
 }
 
-function chart(id,type,labels,data,label){
-  new Chart(document.getElementById(id),{
-    type,
-    data:{
-      labels,
-      datasets:[{label,data,borderWidth:2,fill:false}]
-    },
-    options:{
-      responsive:true,
-      plugins:{legend:{display:true}},
-      scales:type==="pie"?{}:{y:{beginAtZero:true}}
-    }
-  });
+function switchChart(){
+ chartType=chartType==="bar"?"line":"bar";
+ render();
+}
+
+function generateInsights(labels,values,total){
+ if(!labels.length) return;
+ const max=Math.max(...values);
+ const idx=values.indexOf(max);
+ const share=((max/total)*100).toFixed(1);
+
+ summary.innerHTML=`
+ 📈 Top category: <b>${labels[idx]}</b><br>
+ 🥇 Contribution: <b>${share}%</b><br>
+ 📊 Highest value: <b>${max.toFixed(1)}</b>
+ `;
+}
+
+function toggleTheme(){
+ document.body.classList.toggle("light");
+}
+
+async function exportPDF(){
+ const canvas=await html2canvas(dashboard);
+ const img=canvas.toDataURL("image/png");
+ const pdf=new jspdf.jsPDF("l","mm","a4");
+ pdf.addImage(img,"PNG",10,10,280,190);
+ pdf.save("dashboard.pdf");
 }
 </script>
 
-
-
-
 </body>
 </html>
+
