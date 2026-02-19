@@ -24,7 +24,6 @@ body.light{
  background:#1a1a1a;
  padding:18px;
  border-radius:24px;
- margin:auto;
 }
 
 body.light .chat-box{
@@ -75,15 +74,17 @@ body.light .kpi{
  margin-top:14px;
 }
 
-canvas{
+.chart-box{
  background:#111;
- border-radius:14px;
- padding:10px;
- height:260px !important;
+ border-radius:18px;
+ height:260px;
+ padding:12px;
+ display:flex;
 }
 
-body.light canvas{
- background:#f0f0f0;
+.chart-box canvas{
+ width:100%!important;
+ height:100%!important;
 }
 
 .summary{
@@ -99,5 +100,5 @@ body.light .summary{
 
 @media(max-width:900px){
  .grid-2{grid-template-columns:1fr;}
- canvas{height:240px !important;}
+ .chart-box{height:240px;}
 }

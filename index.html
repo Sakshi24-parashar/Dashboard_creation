@@ -36,13 +36,13 @@
 <div class="kpi-grid" id="kpis"></div>
 
 <div class="grid-2">
-  <canvas id="trend"></canvas>
-  <canvas id="pie"></canvas>
+  <div class="chart-box"><canvas id="trend"></canvas></div>
+  <div class="chart-box"><canvas id="pie"></canvas></div>
 </div>
 
 <div class="grid-2">
-  <canvas id="bar"></canvas>
-  <canvas id="metricChart"></canvas>
+  <div class="chart-box"><canvas id="bar"></canvas></div>
+  <div class="chart-box"><canvas id="metricChart"></canvas></div>
 </div>
 
 </div>
@@ -123,18 +123,16 @@ function render(){
  const agg={};
  data.forEach(r=>agg[r[catCol]]=(agg[r[catCol]]||0)+(+r[metric]||0));
 
- /* ===== TOP 10 + OTHERS ===== */
- const sorted = Object.entries(agg).sort((a,b)=>b[1]-a[1]);
- const top10 = sorted.slice(0,10);
- const others = sorted.slice(10);
+ const sorted=Object.entries(agg).sort((a,b)=>b[1]-a[1]);
+ const top10=sorted.slice(0,10);
+ const others=sorted.slice(10);
 
- let labels = top10.map(x=>x[0]);
- let values = top10.map(x=>x[1]);
+ let labels=top10.map(x=>x[0]);
+ let values=top10.map(x=>x[1]);
 
  if(others.length){
-  const othersSum = others.reduce((a,b)=>a+b[1],0);
   labels.push("Others");
-  values.push(othersSum);
+  values.push(others.reduce((a,b)=>a+b[1],0));
  }
 
  draw("pie","pie",labels,values);
@@ -176,7 +174,6 @@ function switchChart(){
 }
 
 function generateInsights(labels,values,total){
- if(!labels.length) return;
  const max=Math.max(...values);
  const idx=values.indexOf(max);
  const share=((max/total)*100).toFixed(1);
@@ -193,14 +190,15 @@ function toggleTheme(){
 }
 
 async function exportPDF(){
- const canvas=await html2canvas(dashboard);
+ const canvas=await html2canvas(dashboard,{scale:2});
  const img=canvas.toDataURL("image/png");
- const pdf=new jspdf.jsPDF("l","mm","a4");
- pdf.addImage(img,"PNG",10,10,280,190);
+ const pdf=new jspdf.jsPDF("p","mm","a4");
+ const w=210;
+ const h=(canvas.height*w)/canvas.width;
+ pdf.addImage(img,"PNG",0,0,w,h);
  pdf.save("dashboard.pdf");
 }
 </script>
 
 </body>
 </html>
-
